@@ -1,0 +1,14 @@
+# Ambientes e configs locais
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# Logs do Airflow
+logs/
+airflow.log
+
+# Arquivos de execução
+*.db
+*.sqlite
+airflow.cfg
