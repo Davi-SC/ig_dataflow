@@ -3,6 +3,7 @@
 .venv/
 __pycache__/
 *.pyc
+dags/sessions/
 
 # Logs do Airflow
 logs/
@@ -12,3 +13,7 @@ airflow.log
 *.db
 *.sqlite
 airflow.cfg
+
+# Arquivos de dados
+*.json
+/data
