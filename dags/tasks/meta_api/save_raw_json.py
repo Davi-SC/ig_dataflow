@@ -4,15 +4,8 @@ import json
 from datetime import datetime
 import pendulum
 
-
+# Salva em json
 def save_data_to_json(data, base_path="/opt/airflow/data/meta_api"):
-    """
-    Save Instagram data to JSON file.
-    
-    Args:
-        data: Dictionary containing username, timestamp, profile_data, and posts
-        base_path: Base directory for saving files
-    """
     username = data.get("username")
     timestamp = data.get("timestamp")
     posts = data.get("posts", [])
@@ -22,18 +15,14 @@ def save_data_to_json(data, base_path="/opt/airflow/data/meta_api"):
         print("Error: Missing username or timestamp in data.")
         return
     
-    # Generate current datetime
-    # current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     current_datetime = pendulum.now("America/Sao_Paulo").strftime("%d-%m-%Y_%H-%M-%S")
     
-    # Create directory structure: /meta_api/username/
     dir_path = os.path.join(base_path, username)
     os.makedirs(dir_path, exist_ok=True)
     
     # File path: /meta_api/username/username_YYYY-MM-DD_HH-MM-SS.json
     file_path = os.path.join(dir_path, f"{username}_{current_datetime}.json")
     
-    # Prepare output data
     output_data = {
         "username": username,
         "collected_at": timestamp,
@@ -54,14 +43,5 @@ def save_data_to_json(data, base_path="/opt/airflow/data/meta_api"):
 
 @task
 def save_raw_json(data):
-    """
-    Airflow task to save raw data to JSON.
-    
-    Args:
-        data: Dictionary from fetch_data_meta_api task
-        
-    Returns:
-        bool: True if successful
-    """
     save_data_to_json(data)
     return True

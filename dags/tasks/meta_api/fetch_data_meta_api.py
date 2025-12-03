@@ -28,7 +28,6 @@ def extract_mentions(text):
 def extract_shortcode(permalink):
     if not permalink:
         return None
-    # Extract code from URLs like https://www.instagram.com/p/ABC123/
     match = re.search(r'/p/([^/]+)/', permalink) or re.search(r'/reel/([^/]+)/', permalink)
     return match.group(1) if match else None
 
@@ -100,7 +99,7 @@ def fetch_with_retry(url, max_retries=3, initial_delay=2):
             elif response.status_code in [429, 403]:
                 print(f"⚠️  Limite de taxa ou Proibido ({response.status_code}) encontrado!")
                 print("⏳ Pausando execução por 1 hora (3600 segundos) para verificar se o limite reseta...")
-                time.sleep(3600)  # Espera 1 hora
+                time.sleep(1800)  # Espera 1/2 hora
                 print("▶️  Retomando execução após pausa de 1 hora...")
                 continue
             
