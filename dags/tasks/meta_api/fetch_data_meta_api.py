@@ -97,15 +97,16 @@ def fetch_with_retry(url, max_retries=3, initial_delay=2):
             
             # Limite de taxa (429 ou 403) - Pausa por 1 hora e tenta novamente
             elif response.status_code in [429, 403]:
-                print(f"⚠️  Limite de taxa ou Proibido ({response.status_code}) encontrado!")
-                print("⏳ Pausando execução por 1 hora (3600 segundos) para verificar se o limite reseta...")
+                print(f"Limite de taxa ou Proibido ({response.status_code}) encontrado!")
+                print("Pausando execução por 1/2 hora para verificar se o limite reseta...")
                 time.sleep(1800)  # Espera 1/2 hora
-                print("▶️  Retomando execução após pausa de 1 hora...")
+                print("Retomando execução após pausa de 1/2 hora...")
                 continue
             
             # Erro temporário do servidor - tenta novamente com backoff
             elif response.status_code in [500, 502, 503, 504]:
                 print(f"Tentativa {attempt + 1}/{max_retries}: Recebeu {response.status_code}, tentando novamente em {delay}s...")
+                print(f"Erro: {response.text}")
                 time.sleep(delay)
                 delay *= 2
                 attempt += 1
@@ -114,7 +115,7 @@ def fetch_with_retry(url, max_retries=3, initial_delay=2):
             # Outros erros do cliente
             else:
                 print(f"Erro do cliente {response.status_code}: {response.text}")
-                return None
+                return response
                 
         except requests.exceptions.Timeout:
             print(f"Tentativa {attempt + 1}/{max_retries}: Tempo esgotado (Timeout), tentando novamente em {delay}s...")
@@ -133,8 +134,10 @@ def fetch_with_retry(url, max_retries=3, initial_delay=2):
 
 # Coleta dados do Instagram usando a API Meta com paginação.
 @task
-def fetch_data_meta_api(username: str, fetch_all_posts=True, max_posts=5000):
-    config = get_config()
+def fetch_data_meta_api(username: str, fetch_all_posts=True, max_posts=5000, app_id=1):
+    config = get_config(app_id)
+    
+    print(f"🔧 Usando Meta API App {app_id} para coletar dados de @{username}")
     
     ig_user_id = config['ig_user_id']
     access_token = config['access_token']
@@ -147,37 +150,50 @@ def fetch_data_meta_api(username: str, fetch_all_posts=True, max_posts=5000):
     )
     
     media_fields = (
-        "id,media_type,media_product_type,timestamp,permalink,caption,"
-        "like_count,comments_count,media_url,thumbnail_url"
+        "id,media_type,timestamp,permalink,caption,"
+        "like_count,comments_count"
     )
     
     # Constroi a URL inicial da API para business discovery
-    url = (
-        f"https://graph.facebook.com/{api_version}/{ig_user_id}"
-        f"?fields=business_discovery.username({username})"
-        f"{{{profile_fields},media.limit(25){{{media_fields}}}}}"
-        f"&access_token={access_token}"
-    )
+    limit = 25
+    data = None
     
-    try:
-        response = fetch_with_retry(url, max_retries=3, initial_delay=2)
+    while limit > 0:
+        url = (
+            f"https://graph.facebook.com/{api_version}/{ig_user_id}"
+            f"?fields=business_discovery.username({username})"
+            f"{{{profile_fields},media.limit({limit}){{{media_fields}}}}}"
+            f"&access_token={access_token}"
+        )
         
-        if response is None:
-            error_msg = (
-                f"Falha ao buscar dados iniciais para @{username} após tentativas. "
-                f"Isso geralmente significa:\n"
-                f"1. A conta não é uma conta Business ou Creator\n"
-                f"2. A conta é privada\n"
-                f"3. Seu token de acesso não tem as permissões necessárias\n"
-                f"Por favor, verifique se @{username} é uma conta Business/Creator pública."
-            )
-            print(error_msg)
-            raise Exception(error_msg)
-        
-        data = response.json()
-        
-    except Exception as e:
-        raise Exception(f"Erro ao buscar dados da API Meta: {e}")
+        try:
+            response = fetch_with_retry(url, max_retries=3, initial_delay=2)
+            
+            if response is None:
+                break
+            
+            if response.status_code == 200:
+                data = response.json()
+                break
+                
+            if "Please reduce the amount of data" in response.text:
+                print(f"⚠️ Erro de volume de dados. Reduzindo limite de {limit} para {int(limit/2)}...")
+                limit = int(limit / 2)
+                continue
+            
+            print(f"Erro na requisição inicial: {response.status_code} - {response.text}")
+            break
+            
+        except Exception as e:
+            raise Exception(f"Erro ao buscar dados da API Meta: {e}")
+
+    if data is None:
+        error_msg = (
+            f"Falha ao buscar dados iniciais para @{username}. "
+            f"Verifique se a conta é Business/Creator pública e se o token é válido."
+        )
+        print(error_msg)
+        raise Exception(error_msg)
     
     if 'business_discovery' not in data:
         raise Exception(f"Nenhum dado de business_discovery encontrado para o usuário: {username}")
@@ -209,17 +225,25 @@ def fetch_data_meta_api(username: str, fetch_all_posts=True, max_posts=5000):
             print(f"Buscando página {page_count + 1}...")
             
             # Constroi URL paginada com cursor 'after'
-            next_url = (
-                f"https://graph.facebook.com/{api_version}/{ig_user_id}"
-                f"?fields=business_discovery.username({username})"
-                f"{{media.limit(25).after({after_cursor}){{{media_fields}}}}}"
-                f"&access_token={access_token}"
-            )
+            while limit > 0:
+                next_url = (
+                    f"https://graph.facebook.com/{api_version}/{ig_user_id}"
+                    f"?fields=business_discovery.username({username})"
+                    f"{{media.limit({limit}).after({after_cursor}){{{media_fields}}}}}"
+                    f"&access_token={access_token}"
+                )
+                
+                # Usa mecanismo de retry
+                response = fetch_with_retry(next_url, max_retries=3, initial_delay=2)
+                
+                if response is not None and "Please reduce the amount of data" in response.text:
+                    print(f"Erro de volume de dados na paginação. Reduzindo limite de {limit} para {int(limit/2)}...")
+                    limit = int(limit / 2)
+                    continue
+                
+                break
             
-            # Usa mecanismo de retry
-            response = fetch_with_retry(next_url, max_retries=3, initial_delay=2)
-            
-            if response is None:
+            if response is None or response.status_code != 200:
                 consecutive_failures += 1
                 print(f"Falha ao buscar página {page_count + 1} após tentativas.")
                 
@@ -253,8 +277,8 @@ def fetch_data_meta_api(username: str, fetch_all_posts=True, max_posts=5000):
                     print("Estrutura de resposta inválida para paginação.")
                     break
                 
-                # Delay para respeitar os limites de taxa (30 segundos entre as páginas)
-                # time.sleep(30)
+                # Delay para respeitar os limites de taxa, 60 segundos entre as páginas
+                time.sleep(60)
                 
             except Exception as e:
                 print(f"Erro ao processar resposta da paginação: {e}")
@@ -315,7 +339,7 @@ def fetch_data_meta_api(username: str, fetch_all_posts=True, max_posts=5000):
             'followers_count': business_data.get('followers_count'),
             'follows_count': business_data.get('follows_count'),
             'media_count': business_data.get('media_count'),
-            'profile_picture_url': business_data.get('profile_picture_url')
+            # 'profile_picture_url': business_data.get('profile_picture_url')
         },
         'posts': posts
     }

@@ -5,27 +5,19 @@ from tasks.meta_api.fetch_data_meta_api import fetch_data_meta_api
 from tasks.meta_api.save_raw_json import save_raw_json
 
 @dag(
-    dag_id="instagram_meta_api_dag",
+    dag_id="instagram_meta_api_app3_dag",
     schedule=None,
     start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=["instagram", "meta_api"],
-    description="Collect Instagram data using Meta Graph API - Sequential Execution"
+    tags=["instagram", "meta_api", "app3"],
+    description="Collect Instagram data using Meta Graph API - App 3 - Sequential Execution"
 )
-def instagram_meta_api_pipeline():
+def instagram_meta_api_app3_pipeline():
     
-    # Lista de perfis para coletar dados
+    # Lista de perfis para coletar dados - App 3
     perfis = [
-        # Perfis de mídia conhecidos para teste
-        # "globonews",
-        # "ge.globo",
-        # "bbcbrasil",
-        # "cnnbrasil",
-
-        # Perfis do IFMA 
-        # "neabicoelhonetoifma",
-        # "meninaemulhernaciencia",
-        # "ifmacoelhoneto",
+        "cnnbrasil",
+        # Adicione mais perfis aqui
     ]
     
     # Execução Sequencial: Um perfil por vez
@@ -35,10 +27,11 @@ def instagram_meta_api_pipeline():
     
     for profile in perfis:
         # max_posts como limite de posts e fetch
-        fetch_task = fetch_data_meta_api.override(task_id=f"fetch_{profile}")(
+        fetch_task = fetch_data_meta_api.override(task_id=f"fetch_{profile}")( 
             username=profile, 
             fetch_all_posts=True,
-            max_posts=3000
+            max_posts=5000,
+            app_id=3  # Usa credenciais do App 3
         )
         
         save_task = save_raw_json.override(task_id=f"save_{profile}")(data=fetch_task)
@@ -51,4 +44,4 @@ def instagram_meta_api_pipeline():
         previous_task = save_task
 
 # Instanciando o DAG
-instagram_meta_api_pipeline()
+instagram_meta_api_app3_pipeline()
